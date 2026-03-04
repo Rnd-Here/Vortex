@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --electric-blue: #00f2ff;
+  --electric-purple: #7000ff;
+  --dark-bg: #0a0a0f;
+  --dark-card: #12121e;
+  --dark-border: #1f1f2e;
+}
+
+body {
+  background-color: var(--dark-bg);
+  color: #e2e2e2;
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .electric-glow {
+    box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+  }
+  
+  .electric-text {
+    background: linear-gradient(to right, var(--electric-blue), var(--electric-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--dark-border);
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--electric-blue);
+  }
+}
