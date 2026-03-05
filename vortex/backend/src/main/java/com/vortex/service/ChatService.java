@@ -135,6 +135,19 @@ public class ChatService {
     public void updateModel(String sessionId, String newModel) {
         Session session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new RuntimeException("Session not found"));
+        
+        String currentModel = session.getModel();
+        if (currentModel.equals(newModel)) return;
+
+        // Archive current model to history
+        String history = session.getPreviousModels();
+        if (history == null || history.isEmpty()) {
+            history = currentModel;
+        } else {
+            history = history + "," + currentModel;
+        }
+
+        session.setPreviousModels(history);
         session.setModel(newModel);
         sessionRepository.save(session);
     }
