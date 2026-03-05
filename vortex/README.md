@@ -1,98 +1,97 @@
 # VORTEX: Multi-Agent LLM Platform
 
-**VORTEX** is a production-quality internal LLM chat platform designed for enterprise environments. It features a high-performance **Spring Boot** backend integrated with the **Google Agent Development Kit (ADK)** and a modern **React** frontend with a dual-tone "Electric Dark" cyberpunk aesthetic.
+**VORTEX** is a production-quality internal AI platform featuring dual-engine orchestration (Java/Python), secure RAG, and a cyberpunk-themed interface.
 
-## Key Features
+## 📡 VORTEX Port Map
 
-- **Electric Dark UI:** A futuristic, high-contrast interface with neon accents.
-- **Smart Orchestration:** Powered by Google ADK, featuring a central Orchestrator that routes between Code and Org agents.
-- **Secure by Design:** AES-256 encryption for API keys and SHA-256 for user session isolation.
-- **Real-time RAG Pipeline:** Document ingestion using Apache Tika and ChromaDB.
-- **Deterministic Context Compression:** Automatic history condensation once a 15-event threshold is reached.
-- **Voice Dictation:** Integrated Whisper-ready transcription logic.
-
----
-
-## Architectural Highlights
-
-### Explicit Context Compression
-VORTEX implements a "Foundational Summary" architecture to manage long-running conversations without exceeding LLM context limits:
-1. **Manual Extraction:** When history hits the threshold, the system manually joins all previous messages into a single transcript.
-2. **Isolated Summarization:** A fresh, stateless "Summarizer" agent receives this transcript as direct prompt input.
-3. **Foundation Establishment:** The original history is cleared and replaced with a concise 3-sentence summary.
-4. **Result:** The LLM maintains full contextual awareness while processing 90% fewer tokens, ensuring high speed and low cost.
-
-### Multimodal Staging Flow
-Unlike traditional "upload-and-wait" systems, VORTEX uses a staging model:
-- Users stage images or documents in the UI (visible thumbnails/chips).
-- On "Send", text and binary data are bundled into a single `Multipart` payload.
-- The backend performs just-in-time extraction or direct multimodal forwarding to the LLM.
+| Component | Port | Description |
+| :--- | :--- | :--- |
+| **Java Backend** | `8000` | Enterprise Core (Spring Boot + ADK Java) |
+| **Python Backend** | `8002` | Agile Core (FastAPI + ADK Python) |
+| **React Frontend** | `80` / `5173` | Main Chat Terminal |
+| **ChromaDB Engine** | `8001` | Shared Persistent Knowledge Store |
+| **Streamlit UI** | `8501` | Technical Demo / Proof UI |
 
 ---
 
-## Deployment with Docker (Production Ready)
+## 🏗️ Architectural Highlights
 
-For production environments, the complete stack is managed via Docker Compose. This ensures all services (Frontend, Backend, and ChromaDB) are correctly networked and persistent.
+### Multi-Engine Interoperability
+VORTEX supports two interchangeable backend engines. Both engines share:
+- **Shared History:** A single SQLite database (`backend/data/chat_app.db`) stores all sessions.
+- **Shared Knowledge:** A single ChromaDB instance (Port 8001) persists vectors to the `vortex/chroma_data` blob.
+- **Toggle Support:** Switch engines via the UI Settings or Initial Setup screen.
 
-1. **Environment Setup:**
-   Configure the `.env` file in the `vortex/` root directory:
-   ```env
-   LITELLM_PROXY_BASE_URL=https://internal-llm-proxy.company.com
-   SECRET_KEY=your-32-character-secret-key
-   ```
-
-2. **Launch the Stack:**
-   ```bash
-   docker-compose up --build -d
-   ```
-   - **Frontend UI:** `http://localhost` (Port 80)
-   - **Backend API:** `http://localhost:8000`
-   - **Persistence:** All vectors are stored in the local `vortex/chroma_data` volume mapping.
+### Deterministic Context Compression
+- Automatic history condensation once a 15-event threshold is reached.
+- Manual transcript extraction followed by isolated summarization preserves 100% context while saving 90% of tokens.
 
 ---
 
-## Technical Demonstration (Internal Testing)
+## 🚀 Deployment (Production)
 
-For internal testing and logical verification, VORTEX provides a standalone **Streamlit-based Technical Proof UI**. This UI is designed to work with a locally running backend.
+For production, the complete stack is managed via Docker Compose:
+```bash
+# 1. Setup .env in project root
+# 2. Launch Stack
+docker-compose up --build -d
+```
+- **Frontend:** `http://localhost` (Port 80)
 
-### One-Click Demo Engine
-The Demo UI is self-contained. When launched, it **automatically initializes and manages the ChromaDB engine** on port 8001, saving data to your local project directory.
+---
 
-1. **Launch Backend:** Ensure your Spring Boot backend is running locally (`mvn spring-boot:run`).
-2. **Setup Demo UI:**
+## 🛠️ Manual Development Setup
+
+If you prefer to run components individually for development:
+
+### 1. Java Backend (Enterprise)
+```bash
+cd vortex/backend
+mvn spring-boot:run
+```
+
+### 2. Python Backend (Agile)
+```bash
+cd vortex/backend-py
+pip install -r requirements.txt
+python main.py
+```
+
+### 3. React Frontend
+```bash
+cd vortex/frontend
+npm install
+npm run dev
+```
+*Access at http://localhost:5173*
+
+---
+
+## 🧪 Technical Demonstration (Internal Testing)
+
+The **Technical Proof UI** is designed for step-by-step verification of logic.
+
+### Quick Start (Demo)
+1. **Ensure a Backend is running** (Java or Python from above).
+2. **Launch Demo UI:**
    ```bash
    cd vortex/test-ui
    pip install -r requirements.txt
    streamlit run demo_app.py
    ```
-3. **Verification Flow:**
-   - **Simple Agent:** Verify Google Search and Code Execution tool usage.
-   - **Document Agent:** Upload a file to generate the "Knowledge Blob" and test "Closed-Book" RAG retrieval.
-
-### The "Knowledge Blob" Portability
-The `vortex/chroma_data` folder generated during testing is a self-contained "Blob". It can be zipped and moved to any machine, and is 100% compatible with Python-based Chroma clients or the production Docker stack.
+- **Note:** The Demo UI automatically manages the Chroma engine on port 8001.
 
 ---
 
-## Manual Development Setup
+## 🛠️ Configuration Details
 
-### Backend (Spring Boot + Java 17)
-1. `cd backend`
-2. `mvn spring-boot:run`
+### Database Persistence
+- **Path:** `vortex/backend/data/chat_app.db` (Shared by both backends).
+- **Driver:** SQLite (Zero-config, automatically initialized).
 
-### Frontend (React + Vite)
-1. `cd frontend`
-2. `npm install`
-3. `npm run dev` (Access at `http://localhost:5173`)
-
----
-
-## Administrative Tasks
-
-### Document Ingestion (RAG)
-To train the **Org Assistant** on new knowledge:
-1. Navigate to `http://localhost/admin/upload-documents`.
-2. Upload PDF, Code, or Text documents to vectorize them into the ChromaDB knowledge base.
+### Knowledge Blob (RAG)
+- **Path:** `vortex/chroma_data/`
+- **Compatibility:** 100% Python/Java interchangeable format.
 
 ---
 *Developed with excellence by the VORTEX Engineering Team.*

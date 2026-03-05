@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api, MOCK_CONFIG } from './api';
-import { Plus, MessageSquare, Send, Paperclip, Settings, Loader2, Bot, User, Code, Building, RefreshCw, X, Sparkles, Terminal, LogOut, Key, AlertTriangle, MoreVertical, Edit2, Trash2, Mic, MicOff, Copy, Check, Database, FileText, Image as ImageIcon } from 'lucide-react';
+import { api, MOCK_CONFIG, setBackendType, getBackendType } from './api';
+import { Plus, MessageSquare, Send, Paperclip, Settings, Loader2, Bot, User, Code, Building, RefreshCw, X, Sparkles, Terminal, LogOut, Key, AlertTriangle, MoreVertical, Edit2, Trash2, Mic, MicOff, Copy, Check, Database, FileText, Image as ImageIcon, Cpu } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -30,6 +30,7 @@ function ChatPlatform() {
   // Global State
   const [globalApiKey, setGlobalApiKey] = useState<string>(localStorage.getItem('VORTEX_API_KEY') || '');
   const [isSetupComplete, setIsSetupComplete] = useState<boolean>(!!localStorage.getItem('VORTEX_API_KEY'));
+  const [backendType, setBackendTypeState] = useState<'java' | 'python'>(getBackendType() as 'java' | 'python');
 
   // Modals
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
@@ -59,7 +60,7 @@ function ChatPlatform() {
       loadSessions();
       loadModels();
     }
-  }, [isSetupComplete, globalApiKey]);
+  }, [isSetupComplete, globalApiKey, backendType]);
 
   useEffect(() => {
     if (activeSession?.id) {
@@ -117,6 +118,7 @@ function ChatPlatform() {
     setIsUpdatingKey(true);
     try {
       const keyToStore = MOCK_CONFIG.enabled ? (newApiKey || 'MOCK_KEY') : newApiKey;
+      setBackendType(backendType); // Set before verification
       const models = await api.fetchModels(keyToStore);
       if (models.length > 0) {
         localStorage.setItem('VORTEX_API_KEY', keyToStore);
@@ -127,7 +129,7 @@ function ChatPlatform() {
         setNewApiKey('');
       }
     } catch (err) {
-      alert('Failed to verify API Key. Ensure backend is running.');
+      alert('Failed to verify API Key. Ensure the selected backend is running.');
     } finally {
       setIsUpdatingKey(false);
     }
@@ -140,13 +142,14 @@ function ChatPlatform() {
     }
     localStorage.setItem('VORTEX_API_KEY', newApiKey);
     setGlobalApiKey(newApiKey);
+    setBackendType(backendType);
     setActiveSession(null);
     setMessages([]);
     setSessions([]);
     setIsSettingsModalOpen(false);
     setConfirmText('');
     setNewApiKey('');
-    alert('API Key updated.');
+    alert('Configuration updated.');
   };
 
   const handleDeleteApiKey = () => {
@@ -341,7 +344,12 @@ function ChatPlatform() {
             </div>
           ))}
         </div>
-        <div className="p-6 border-t border-[#1f1f2e] bg-[#0a0a0f]/50 backdrop-blur-md"><div className="flex items-center gap-3 text-xs text-[#4a4a6a]"><div className="w-2 h-2 rounded-full bg-[#00f2ff] animate-pulse"></div><span>PROXY SECURE</span></div></div>
+        <div className="p-6 border-t border-[#1f1f2e] bg-[#0a0a0f]/50 backdrop-blur-md">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3 text-xs text-[#4a4a6a]"><div className="w-2 h-2 rounded-full bg-[#00f2ff] animate-pulse"></div><span>PROXY SECURE</span></div>
+            <div className="text-[9px] font-bold text-[#00f2ff] uppercase tracking-widest bg-[#00f2ff]/5 p-1 px-2 rounded-md border border-[#00f2ff]/10 self-start">{backendType.toUpperCase()} ENGINE</div>
+          </div>
+        </div>
       </aside>
 
       {/* Main Area */}
@@ -433,6 +441,15 @@ function ChatPlatform() {
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#00f2ff] to-[#7000ff] flex items-center justify-center mx-auto mb-8 shadow-lg"><Key size={30} className="text-white" /></div>
             <h2 className="text-2xl font-bold text-white mb-2">Endpoint Authorization</h2>
             <p className="text-[#4a4a6a] text-sm mb-8">Establish a secure link with the LiteLLM proxy to access internal playground intelligence.</p>
+            
+            <div className="mb-8 p-4 bg-[#0a0a0f] border border-[#1f1f2e] rounded-2xl">
+              <label className="block text-[10px] font-bold text-[#4a4a6a] mb-3 uppercase tracking-widest text-left">Backend Engine</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={() => setBackendTypeState('java')} className={`py-2 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center justify-center gap-2 ${backendType === 'java' ? 'bg-[#00f2ff]/10 border-[#00f2ff] text-[#00f2ff]' : 'bg-transparent border-[#1f1f2e] text-[#4a4a6a] hover:border-[#4a4a6a]'}`}><Cpu size={12} /> Java (Enterprise)</button>
+                <button onClick={() => setBackendTypeState('python')} className={`py-2 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center justify-center gap-2 ${backendType === 'python' ? 'bg-[#7000ff]/10 border-[#7000ff] text-[#7000ff]' : 'bg-transparent border-[#1f1f2e] text-[#4a4a6a] hover:border-[#4a4a6a]'}`}><Cpu size={12} /> Python (Agile)</button>
+              </div>
+            </div>
+
             <input type="password" value={newApiKey} onChange={e => setNewApiKey(e.target.value)} className="w-full px-5 py-4 bg-[#0a0a0f] border border-[#1f1f2e] rounded-2xl focus:border-[#00f2ff] outline-none transition-all placeholder-[#4a4a6a] text-sm mb-8" placeholder={MOCK_CONFIG.enabled ? "MOCK MODE ACTIVE (ENTER ANYTHING)" : "sk-..."} />
             <button onClick={handleInitialSetup} disabled={isUpdatingKey || (!MOCK_CONFIG.enabled && !newApiKey.startsWith('sk-'))} className="w-full py-4 bg-[#00f2ff] hover:bg-[#00d8e6] text-[#0a0a0f] font-bold rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2 tracking-widest uppercase text-xs">{isUpdatingKey ? <Loader2 className="animate-spin" /> : 'Authorize Connection'}</button>
           </div>
@@ -447,6 +464,14 @@ function ChatPlatform() {
             <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-3"><Settings className="text-[#00f2ff]" /> Global Settings</h3>
             <div className="space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
               <section className="p-6 bg-[#0a0a0f]/50 border border-[#1f1f2e] rounded-2xl">
+                <div className="text-[10px] font-bold text-[#00f2ff] uppercase tracking-widest mb-4">Backend Configuration</div>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <button onClick={() => setBackendTypeState('java')} className={`py-2 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center justify-center gap-2 ${backendType === 'java' ? 'bg-[#00f2ff]/10 border-[#00f2ff] text-[#00f2ff]' : 'bg-transparent border-[#1f1f2e] text-[#4a4a6a] hover:border-[#4a4a6a]'}`}><Cpu size={12} /> Java</button>
+                  <button onClick={() => setBackendTypeState('python')} className={`py-2 px-4 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all flex items-center justify-center gap-2 ${backendType === 'python' ? 'bg-[#7000ff]/10 border-[#7000ff] text-[#7000ff]' : 'bg-transparent border-[#1f1f2e] text-[#4a4a6a] hover:border-[#4a4a6a]'}`}><Cpu size={12} /> Python</button>
+                </div>
+                <div className="text-[9px] text-[#4a4a6a] italic text-center">Changes apply after updating the API Key below.</div>
+              </section>
+              <section className="p-6 bg-[#0a0a0f]/50 border border-[#1f1f2e] rounded-2xl">
                 <div className="text-[10px] font-bold text-[#00f2ff] uppercase tracking-widest mb-4">Knowledge Base</div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-[#8e8eaf]">Manage organizational ingestion</span>
@@ -456,9 +481,9 @@ function ChatPlatform() {
               <section className="p-6 bg-[#0a0a0f]/50 border border-[#1f1f2e] rounded-2xl">
                 <div className="text-[10px] font-bold text-[#00f2ff] uppercase tracking-widest mb-4">API Configuration</div>
                 <input type="password" value={newApiKey} onChange={e => setNewApiKey(e.target.value)} className="w-full px-4 py-3 bg-[#0d0d14] border border-[#1f1f2e] rounded-xl text-sm mb-6 outline-none focus:border-[#00f2ff]" placeholder="••••••••••••••••" />
-                <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-xl mb-6 flex items-start gap-4"><AlertTriangle className="text-red-500 flex-shrink-0" size={20} /><div><div className="text-xs font-bold text-red-500 uppercase mb-1">Critical Action Warning</div><div className="text-[11px] text-[#8e8eaf]">Modifying your key will isolate you from your current session history. Type <span className="text-red-500 font-bold">YES</span> to confirm.</div></div></div>
+                <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-xl mb-6 flex items-start gap-4"><AlertTriangle className="text-red-500 flex-shrink-0" size={20} /><div><div className="text-xs font-bold text-red-500 uppercase mb-1">Critical Action Warning</div><div className="text-[11px] text-[#8e8eaf]">Modifying settings will isolate you from your current session history on the other backend. Type <span className="text-red-500 font-bold">YES</span> to confirm.</div></div></div>
                 <input type="text" value={confirmText} onChange={e => setConfirmText(e.target.value)} className="w-full px-4 py-3 bg-[#0d0d14] border border-[#1f1f2e] rounded-xl text-sm mb-6 outline-none focus:border-red-500 placeholder-red-900/30" placeholder="Type YES to confirm changes" />
-                <div className="flex gap-3"><button onClick={handleUpdateApiKey} className="flex-1 py-3 bg-[#1a1a2e] hover:bg-[#252545] text-[#00f2ff] rounded-xl text-xs font-bold border border-[#00f2ff]/20 transition-all">Update Key</button><button onClick={handleDeleteApiKey} className="flex-1 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl text-xs font-bold border border-red-500/20 transition-all">Reset & Logout</button></div>
+                <div className="flex gap-3"><button onClick={handleUpdateApiKey} className="flex-1 py-3 bg-[#1a1a2e] hover:bg-[#252545] text-[#00f2ff] rounded-xl text-xs font-bold border border-[#00f2ff]/20 transition-all">Update Settings</button><button onClick={handleDeleteApiKey} className="flex-1 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl text-xs font-bold border border-red-500/20 transition-all">Reset & Logout</button></div>
               </section>
             </div>
           </div>

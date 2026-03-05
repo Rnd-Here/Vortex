@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+google-adk>=0.7.0
+litellm
+sqlalchemy
+python-multipart
+python-dotenv
+requests
+pycryptodome
+pydantic
+ulid-py
+tika

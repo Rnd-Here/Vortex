@@ -1,6 +1,19 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api/v1';
+// Default URLs
+const JAVA_BACKEND = 'http://localhost:8000/api/v1';
+const PYTHON_BACKEND = 'http://localhost:8002/api/v1';
+
+let currentBaseUrl = localStorage.getItem('VORTEX_BACKEND_TYPE') === 'python' ? PYTHON_BACKEND : JAVA_BACKEND;
+
+export const setBackendType = (type: 'java' | 'python') => {
+  currentBaseUrl = type === 'python' ? PYTHON_BACKEND : JAVA_BACKEND;
+  localStorage.setItem('VORTEX_BACKEND_TYPE', type);
+};
+
+export const getBackendType = () => {
+  return localStorage.getItem('VORTEX_BACKEND_TYPE') || 'java';
+};
 
 // Centralized Frontend Mock Configuration
 export const MOCK_CONFIG = {
@@ -32,7 +45,7 @@ export const api = {
       await sleep(MOCK_CONFIG.delay);
       return MOCK_CONFIG.models;
     }
-    const res = await axios.post(`${API_URL}/models`, { api_key: apiKey, is_mock: false });
+    const res = await axios.post(`${currentBaseUrl}/models`, { api_key: apiKey, is_mock: false });
     return res.data.models;
   },
   
@@ -48,7 +61,7 @@ export const api = {
         created_at: new Date().toISOString()
       };
     }
-    const res = await axios.post(`${API_URL}/sessions`, { 
+    const res = await axios.post(`${currentBaseUrl}/sessions`, { 
       api_key: apiKey, 
       model, 
       mode,
@@ -63,7 +76,7 @@ export const api = {
       return []; 
     }
     try {
-      const res = await axios.post(`${API_URL}/sessions/filter`, { api_key: apiKey });
+      const res = await axios.post(`${currentBaseUrl}/sessions/filter`, { api_key: apiKey });
       return res.data;
     } catch (err) {
       console.warn("Backend unreachable, returning empty sessions.");
@@ -76,7 +89,7 @@ export const api = {
       return [];
     }
     try {
-      const res = await axios.get(`${API_URL}/sessions/${sessionId}/messages`);
+      const res = await axios.get(`${currentBaseUrl}/sessions/${sessionId}/messages`);
       return res.data;
     } catch (err) {
       return [];
@@ -101,7 +114,7 @@ export const api = {
       formData.append('file', file);
     }
 
-    const res = await axios.post(`${API_URL}/chat`, formData, {
+    const res = await axios.post(`${currentBaseUrl}/chat`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -114,7 +127,7 @@ export const api = {
     formData.append('file', file);
     formData.append('session_id', sessionId);
     
-    const res = await axios.post(`${API_URL}/upload`, formData, {
+    const res = await axios.post(`${currentBaseUrl}/upload`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -131,7 +144,7 @@ export const api = {
     formData.append('file', file);
     formData.append('api_key', apiKey);
     
-    const res = await axios.post(`${API_URL}/ingest`, formData, {
+    const res = await axios.post(`${currentBaseUrl}/ingest`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -151,7 +164,7 @@ export const api = {
     formData.append('chunk_overlap', chunkOverlap.toString());
     formData.append('temperature', temperature.toString());
     
-    const res = await axios.post(`${API_URL}/admin/ingest`, formData, {
+    const res = await axios.post(`${currentBaseUrl}/admin/ingest`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -167,7 +180,7 @@ export const api = {
     const formData = new FormData();
     formData.append('file', audioBlob, 'recording.webm');
     
-    const res = await axios.post(`${API_URL}/transcribe`, formData, {
+    const res = await axios.post(`${currentBaseUrl}/transcribe`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -179,7 +192,7 @@ export const api = {
     if (sessionId.startsWith('mock-')) {
       return { success: true };
     }
-    const res = await axios.patch(`${API_URL}/sessions/${sessionId}`, { name: newName });
+    const res = await axios.patch(`${currentBaseUrl}/sessions/${sessionId}`, { name: newName });
     return res.data;
   },
 
@@ -187,7 +200,7 @@ export const api = {
     if (sessionId.startsWith('mock-')) {
       return { success: true };
     }
-    const res = await axios.delete(`${API_URL}/sessions/${sessionId}`);
+    const res = await axios.delete(`${currentBaseUrl}/sessions/${sessionId}`);
     return res.data;
   },
 
@@ -195,7 +208,7 @@ export const api = {
     if (sessionId.startsWith('mock-')) {
       return { success: true };
     }
-    const res = await axios.patch(`${API_URL}/sessions/${sessionId}`, { model: newModel });
+    const res = await axios.patch(`${currentBaseUrl}/sessions/${sessionId}`, { model: newModel });
     return res.data;
   }
 };
