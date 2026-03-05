@@ -10,3 +10,7 @@ pycryptodome
 pydantic
 ulid-py
 tika
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi
+opentelemetry-exporter-otlp
