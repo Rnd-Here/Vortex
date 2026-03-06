@@ -1,18 +1,24 @@
 import axios from 'axios';
 
-// Default URLs
-const JAVA_BACKEND = 'http://localhost:8000/api/v1';
-const PYTHON_BACKEND = 'http://localhost:8002/api/v1';
+// Backend Mapping
+const BACKENDS = {
+  java_proxy: 'http://localhost:8000/api/v1',
+  python_proxy: 'http://localhost:8002/api/v1',
+  java_direct: 'http://localhost:8003/api/v1',
+  python_direct: 'http://localhost:8004/api/v1'
+};
 
-let currentBaseUrl = localStorage.getItem('VORTEX_BACKEND_TYPE') === 'python' ? PYTHON_BACKEND : JAVA_BACKEND;
+export type BackendType = keyof typeof BACKENDS;
 
-export const setBackendType = (type: 'java' | 'python') => {
-  currentBaseUrl = type === 'python' ? PYTHON_BACKEND : JAVA_BACKEND;
+let currentBaseUrl = BACKENDS[localStorage.getItem('VORTEX_BACKEND_TYPE') as BackendType || 'java_proxy'];
+
+export const setBackendType = (type: BackendType) => {
+  currentBaseUrl = BACKENDS[type];
   localStorage.setItem('VORTEX_BACKEND_TYPE', type);
 };
 
-export const getBackendType = () => {
-  return localStorage.getItem('VORTEX_BACKEND_TYPE') || 'java';
+export const getBackendType = (): BackendType => {
+  return (localStorage.getItem('VORTEX_BACKEND_TYPE') as BackendType) || 'java_proxy';
 };
 
 // Centralized Frontend Mock Configuration
@@ -72,20 +78,19 @@ export const api = {
   },
   
   getSessions: async (apiKey: string) => {
-    if (MOCK_CONFIG.enabled) {
-      return []; 
+    if (MOCK_CONFIG.enabled || currentBaseUrl.includes('8003') || currentBaseUrl.includes('8004')) {
+      return []; // Direct backends are stateless in this POC
     }
     try {
       const res = await axios.post(`${currentBaseUrl}/sessions/filter`, { api_key: apiKey });
       return res.data;
     } catch (err) {
-      console.warn("Backend unreachable, returning empty sessions.");
       return [];
     }
   },
   
   getMessages: async (sessionId: string) => {
-    if (!sessionId || sessionId.startsWith('mock-')) {
+    if (!sessionId || sessionId.startsWith('mock-') || sessionId.startsWith('pers-')) {
       return [];
     }
     try {
@@ -110,27 +115,11 @@ export const api = {
     const formData = new FormData();
     formData.append('session_id', sessionId);
     formData.append('content', content);
-    if (file) {
-      formData.append('file', file);
-    }
+    formData.append('api_key', localStorage.getItem('VORTEX_API_KEY') || '');
+    if (file) formData.append('file', file);
 
     const res = await axios.post(`${currentBaseUrl}/chat`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-    return res.data;
-  },
-
-  uploadFile: async (sessionId: string, file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('session_id', sessionId);
-    
-    const res = await axios.post(`${currentBaseUrl}/upload`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
+      headers: { 'Content-Type': 'multipart/form-data' }
     });
     return res.data;
   },
@@ -143,71 +132,34 @@ export const api = {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('api_key', apiKey);
-    
-    const res = await axios.post(`${currentBaseUrl}/ingest`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+    const res = await axios.post(`${currentBaseUrl}/ingest`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
     return res.data;
   },
 
   adminIngestKnowledge: async (file: File, apiKey: string, chunkSize: number, chunkOverlap: number, temperature: number) => {
-    if (MOCK_CONFIG.enabled) {
-      await sleep(2500);
-      return { status: "success", message: "Admin: Knowledge Ingested (Simulated)." };
-    }
     const formData = new FormData();
     formData.append('file', file);
     formData.append('api_key', apiKey);
     formData.append('chunk_size', chunkSize.toString());
     formData.append('chunk_overlap', chunkOverlap.toString());
-    formData.append('temperature', temperature.toString());
-    
-    const res = await axios.post(`${currentBaseUrl}/admin/ingest`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-    return res.data;
-  },
-
-  transcribe: async (audioBlob: Blob) => {
-    if (MOCK_CONFIG.enabled) {
-      await sleep(1500);
-      return { text: "Simulated transcription." };
-    }
-    const formData = new FormData();
-    formData.append('file', audioBlob, 'recording.webm');
-    
-    const res = await axios.post(`${currentBaseUrl}/transcribe`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+    const res = await axios.post(`${currentBaseUrl}/admin/ingest`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
     return res.data;
   },
 
   renameSession: async (sessionId: string, newName: string) => {
-    if (sessionId.startsWith('mock-')) {
-      return { success: true };
-    }
+    if (sessionId.startsWith('pers-')) return { success: true };
     const res = await axios.patch(`${currentBaseUrl}/sessions/${sessionId}`, { name: newName });
     return res.data;
   },
 
   deleteSession: async (sessionId: string) => {
-    if (sessionId.startsWith('mock-')) {
-      return { success: true };
-    }
+    if (sessionId.startsWith('pers-')) return { success: true };
     const res = await axios.delete(`${currentBaseUrl}/sessions/${sessionId}`);
     return res.data;
   },
 
   updateSessionModel: async (sessionId: string, newModel: string) => {
-    if (sessionId.startsWith('mock-')) {
-      return { success: true };
-    }
+    if (sessionId.startsWith('pers-')) return { success: true };
     const res = await axios.patch(`${currentBaseUrl}/sessions/${sessionId}`, { model: newModel });
     return res.data;
   }

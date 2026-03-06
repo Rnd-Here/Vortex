@@ -17,6 +17,14 @@
 		<java.version>17</java.version>
 		<adk.version>0.7.0</adk.version>
 	</properties>
+
+    <repositories>
+        <repository>
+            <id>local-project-repo</id>
+            <url>file://${project.basedir}/libs</url>
+        </repository>
+    </repositories>
+
 	<dependencies>
         <!-- JAXB for Spring Boot 3 / Java 17+ -->
         <dependency>

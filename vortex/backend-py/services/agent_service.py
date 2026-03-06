@@ -6,7 +6,7 @@ from google.adk.models.lite_llm import LiteLlm
 from google.adk.runner import InMemoryRunner
 from google.adk.sessions import Session
 from google.adk.events import Event
-from google.adk.tools import BuiltInCodeExecutionTool, GoogleSearchTool
+from google.adk.tools import BuiltInCodeExecutionTool, GoogleSearchTool, FunctionTool
 from google.genai.types import Content, Part, Blob
 from services.chroma_service import ChromaService
 from opentelemetry import trace
@@ -23,49 +23,30 @@ class AgentService:
 
     def process_multimodal_request(self, mode: str, model_name: str, api_key: str, session_id: str, query: str, file_data: Optional[bytes] = None, mime_type: Optional[str] = None, filename: Optional[str] = None) -> str:
         
-        # Start an explicit span for the agentic request
         with tracer.start_as_current_span("vortex_agent_request") as span:
             span.set_attribute("vortex.mode", mode)
             span.set_attribute("vortex.model", model_name)
-            span.set_attribute("vortex.session_id", session_id)
 
             parts_list = []
             enhanced_query = query
 
-            # 1. Handle File Attachment
             if file_data:
-                with tracer.start_as_current_span("file_processing"):
-                    if mime_type and mime_type.startswith("image/"):
-                        parts_list.append(Part(inline_data=Blob(mime_type=mime_type, data=file_data)))
-                    else:
-                        try:
-                            extracted_text = file_data.decode('utf-8', errors='ignore')
-                            enhanced_query = f"ATTACHED_FILE: {filename}\nCONTENT:\n{extracted_text}\n\nUSER_QUERY: {query}"
-                        except:
-                            pass
+                if mime_type and mime_type.startswith("image/"):
+                    parts_list.append(Part(inline_data=Blob(mime_type=mime_type, data=file_data)))
+                else:
+                    try:
+                        extracted_text = file_data.decode('utf-8', errors='ignore')
+                        enhanced_query = f"ATTACHED_FILE: {filename}\nCONTENT:\n{extracted_text}\n\nUSER_QUERY: {query}"
+                    except:
+                        pass
 
-            # 2. RAG Enrichment
-            if mode.lower() == "org":
-                with tracer.start_as_current_span("chromadb_retrieval"):
-                    chroma_context = self.chroma_service.query_knowledge(query, api_key)
-                    if chroma_context:
-                        enhanced_query = f"INTERNAL_DOCS:\n{chroma_context}\n\n{enhanced_query}"
+            model = LiteLlm(model_name=model_name, api_base=self.proxy_base_url, api_key=api_key)
 
-            # 3. Configure the Model
-            model = LiteLlm(
-                model_name=model_name,
-                api_base=self.proxy_base_url,
-                api_key=api_key
-            )
-
-            # 4. Get or Create Runner
             if model_name not in self.runner_cache:
-                orchestrator = self._setup_agents(model)
+                orchestrator = self._setup_agents(model, api_key)
                 self.runner_cache[model_name] = InMemoryRunner(orchestrator)
             
             runner = self.runner_cache[model_name]
-
-            # 5. Context Compression Check
             self._compress_history_if_necessary(runner, session_id, model)
 
             try:
@@ -74,56 +55,71 @@ class AgentService:
                 multimodal_content = Content.from_parts(parts_list)
 
                 response = ""
-                with tracer.start_as_current_span("adk_runner_execution"):
-                    for event in runner.run(user_id="user", session_id=session_id, content=multimodal_content):
-                        if event.final_response:
-                            response += event.stringify_content()
-                
+                for event in runner.run(user_id="user", session_id=session_id, content=multimodal_content):
+                    if event.final_response:
+                        response += event.stringify_content()
                 return response
             except Exception as e:
-                logger.error(f"ADK Execution Error: {e}")
-                return f"Vortex (Py) Connection Exception: {e}"
+                return f"Vortex (Py) Agentic Error: {e}"
 
     def _compress_history_if_necessary(self, runner: InMemoryRunner, session_id: str, model: LiteLlm):
         try:
             session = runner.session_service.get_session(app_id="Vortex", user_id="user", session_id=session_id)
             if session and len(session.events) > self.compression_threshold:
-                with tracer.start_as_current_span("context_compression"):
-                    logger.info(f"Compressing context for session: {session_id}")
-                    
-                    history_dump = "\n".join([e.stringify_content() for e in session.events])
-                    
-                    summarizer = LlmAgent(name="Summarizer", model=model, instruction="Summarize history.")
-                    temp_runner = InMemoryRunner(summarizer)
-                    
-                    summary = ""
-                    for event in temp_runner.run(user_id="system", session_id="temp-sum", content=Content.from_parts([Part.from_text(f"History to summarize:\n{history_dump}")])):
-                        if event.final_response:
-                            summary += event.stringify_content()
-                    
-                    session.events.clear()
-                    session.events.append(Event(author="System", content=Content.from_parts([Part.from_text(f"FOUNDATIONAL_SUMMARY: {summary}")])))
-        except Exception as e:
-            logger.warning(f"Compression sequence failed: {e}")
+                history_dump = "\n".join([e.stringify_content() for e in session.events])
+                summarizer = LlmAgent(name="Summarizer", model=model, instruction="Summarize history.")
+                temp_runner = InMemoryRunner(summarizer)
+                summary = ""
+                for event in temp_runner.run(user_id="system", session_id="temp-sum", content=Content.from_parts([Part.from_text(f"History:\n{history_dump}")])):
+                    if event.final_response: summary += event.stringify_content()
+                session.events.clear()
+                session.events.append(Event(author="System", content=Content.from_parts([Part.from_text(f"SUMMARY: {summary}")])))
+        except: pass
 
-    def _setup_agents(self, model: LiteLlm) -> LlmAgent:
-        code_agent = LlmAgent(
-            name="CodeAgent",
-            model=model,
-            instruction="You are an expert Code Assistant.",
-            tools=[BuiltInCodeExecutionTool(), GoogleSearchTool()]
+    def _setup_agents(self, model: LiteLlm, api_key: str) -> LlmAgent:
+        
+        # --- ENHANCED: Agentic RAG Tool with Filtering ---
+        def search_org_docs(query: str, filename_filter: Optional[str] = None) -> str:
+            """
+            Searches internal organizational docs. 
+            Args:
+                query: The search string.
+                filename_filter: Optional. If the user mentions a specific file (e.g. 'policy.pdf'), provide it here.
+            """
+            return self.chroma_service.search_docs(query, api_key, filename_filter)
+
+        search_expert = LlmAgent(
+            name="SearchExpert", model=model, 
+            instruction="Use Google Search tool for real-time web info.",
+            tools=[GoogleSearchTool()]
+        )
+        code_executor = LlmAgent(
+            name="CodeExecutionExpert", model=model,
+            instruction="Use Built-in Code Execution to run Python.",
+            tools=[BuiltInCodeExecutionTool()]
+        )
+        
+        # RAG Expert with metadata awareness
+        rag_expert = LlmAgent(
+            name="OrgKnowledgeExpert", model=model,
+            instruction="Expert in internal docs. Use 'search_org_docs'. You can filter by filename if the user mentions one.",
+            tools=[FunctionTool.from_function(search_org_docs)]
+        )
+
+        code_assistant = LlmAgent(
+            name="CodeAssistant", model=model,
+            instruction="Code Expert. Delegate to SearchExpert or CodeExecutionExpert.",
+            sub_agents=[search_expert, code_executor]
         )
 
         org_assistant = LlmAgent(
-            name="OrgAssistant",
-            model=model,
-            instruction="Internal Org Assistant."
+            name="OrgAssistant", model=model,
+            instruction="Internal Org Assistant. Delegate to OrgKnowledgeExpert for doc searches.",
+            sub_agents=[rag_expert]
         )
 
-        orchestrator = LlmAgent(
-            name="Orchestrator",
-            model=model,
-            instruction="Route queries appropriately.",
-            sub_agents=[code_agent, org_assistant]
+        return LlmAgent(
+            name="Orchestrator", model=model,
+            instruction="Route to CodeAssistant or OrgAssistant based on [SESSION_MODE].",
+            sub_agents=[code_assistant, org_assistant]
         )
-        return orchestrator

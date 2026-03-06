@@ -189,7 +189,7 @@ async def delete_session(session_id: str):
     finally:
         db.close()
 
-# --- Technical Demonstration Endpoints ---
+# --- Technical Demonstration Endpoints (Updated for Nested Agents) ---
 
 @app.post("/api/v1/test/simple-agent")
 async def test_simple_agent(request: Dict = Body(...)):
@@ -199,19 +199,24 @@ async def test_simple_agent(request: Dict = Body(...)):
     proxy_url = os.getenv("LITELLM_PROXY_BASE_URL")
 
     model = LiteLlm(model_name=model_name, api_base=proxy_url, api_key=api_key)
-    agent = LlmAgent(
+    
+    # Conflict Resolution: Atomic Agents
+    search_expert = LlmAgent(name="SearchExpert", model=model, tools=[GoogleSearchTool()])
+    code_executor = LlmAgent(name="CodeExecutionExpert", model=model, tools=[BuiltInCodeExecutionTool()])
+    
+    # The Tool Manager
+    demo_agent = LlmAgent(
         name="DemoAgent", 
         model=model, 
-        instruction="Technical demo agent using Search and Code Execution.",
-        tools=[BuiltInCodeExecutionTool(), GoogleSearchTool()]
+        instruction="Technical demo. Delegate to SearchExpert for info or CodeExecutionExpert to run code.",
+        sub_agents=[search_expert, code_executor]
     )
-    runner = InMemoryRunner(agent)
     
+    runner = InMemoryRunner(demo_agent)
     try:
         response = ""
         for event in runner.run(user_id="test-user", session_id=str(uuid.uuid4()), content=Content.from_parts([Part.from_text(prompt)])):
-            if event.final_response:
-                response += event.stringify_content()
+            if event.final_response: response += event.stringify_content()
         return {"status": "SUCCESS", "agent_response": response}
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
@@ -237,7 +242,7 @@ async def test_rag_agent(request: Dict = Body(...)):
     agent = LlmAgent(
         name="StrictRagAgent", 
         model=model, 
-        instruction="Answer ONLY using provided context. If not found, say you don't have details."
+        instruction="Answer ONLY using provided context."
     )
     runner = InMemoryRunner(agent)
     
@@ -245,8 +250,7 @@ async def test_rag_agent(request: Dict = Body(...)):
         prompt = f"CONTEXT:\n{context}\n\nQUERY: {query}"
         response = ""
         for event in runner.run(user_id="test-user", session_id=str(uuid.uuid4()), content=Content.from_parts([Part.from_text(prompt)])):
-            if event.final_response:
-                response += event.stringify_content()
+            if event.final_response: response += event.stringify_content()
         return {"status": "SUCCESS", "retrieved_context": context, "agent_response": response}
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}

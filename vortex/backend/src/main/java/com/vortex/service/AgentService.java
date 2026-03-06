@@ -8,6 +8,8 @@ import com.google.adk.sessions.Session;
 import com.google.adk.events.Event;
 import com.google.adk.tools.BuiltInCodeExecutionTool;
 import com.google.adk.tools.GoogleSearchTool;
+import com.google.adk.tools.FunctionTool;
+import com.google.adk.tools.Annotations.Schema;
 import com.google.adk.models.BaseLlm;
 import com.google.adk.models.ApigeeLlm;
 import com.google.common.collect.ImmutableList;
@@ -47,7 +49,6 @@ public class AgentService {
         List<Part> partsList = new ArrayList<>();
         String enhancedQuery = query;
 
-        // 1. Handle File Attachment
         if (file != null && !file.isEmpty()) {
             try {
                 String contentType = file.getContentType();
@@ -63,25 +64,15 @@ public class AgentService {
             }
         }
 
-        // 2. RAG Enrichment (Org Mode only)
-        if ("org".equalsIgnoreCase(mode)) {
-            String chromaContext = chromaService.queryKnowledge(query, apiKey);
-            if (!chromaContext.isEmpty()) {
-                enhancedQuery = "INTERNAL_DOCS:\n" + chromaContext + "\n\n" + enhancedQuery;
-            }
-        }
-
-        // 3. Configure the Model
         BaseLlm configuredModel = ApigeeLlm.builder()
                 .modelName(modelName)
                 .proxyUrl(proxyBaseUrl)
                 .customHeaders(ImmutableMap.of("Authorization", "Bearer " + apiKey))
                 .build();
 
-        // 4. Get or Create Runner
-        InMemoryRunner runner = runnerCache.computeIfAbsent(modelName, m -> new InMemoryRunner(setupAgents(configuredModel)));
+        // Agentic RAG: We pass the apiKey to the setupAgents so the tool can use it
+        InMemoryRunner runner = runnerCache.computeIfAbsent(modelName, m -> new InMemoryRunner(setupAgents(configuredModel, apiKey)));
 
-        // 5. Context Compression Check
         compressHistoryIfNecessary(runner, sessionId, configuredModel);
 
         final StringBuilder responseBuilder = new StringBuilder();
@@ -107,57 +98,67 @@ public class AgentService {
         try {
             Session session = runner.sessionService().getSession("Vortex", "user", sessionId, Optional.empty()).blockingGet();
             if (session != null && session.events().size() > COMPRESSION_THRESHOLD) {
-                log.info("Triggering Context Compression for Session: {}", sessionId);
-                
-                // Extract historical text
-                String historyDump = session.events().stream()
-                        .map(Event::stringifyContent)
-                        .collect(Collectors.joining("\n"));
-
-                LlmAgent summarizer = LlmAgent.builder().name("Summarizer").model(model).instruction("Summarize the following conversation history into a concise 3-sentence foundation.").build();
+                String historyDump = session.events().stream().map(Event::stringifyContent).collect(Collectors.joining("\n"));
+                LlmAgent summarizer = LlmAgent.builder().name("Summarizer").model(model).instruction("Summarize history concisely.").build();
                 InMemoryRunner tempRunner = new InMemoryRunner(summarizer);
                 final StringBuilder summary = new StringBuilder();
                 Content cmd = Content.fromParts(Part.fromText("History to summarize:\n" + historyDump));
-                
                 tempRunner.runAsync("system", "temp-sum", cmd, runConfig).blockingForEach(event -> {
                     if (event.finalResponse()) summary.append(event.stringifyContent());
                 });
-
-                // Replace history with the summary
                 session.events().clear();
-                session.events().add(Event.builder()
-                        .id(Event.generateEventId())
-                        .author("System")
-                        .content(Content.fromParts(Part.fromText("FOUNDATIONAL_SUMMARY: " + summary)))
-                        .build());
-                log.info("Compression complete. New foundation established.");
+                session.events().add(Event.builder().id(Event.generateEventId()).author("System").content(Content.fromParts(Part.fromText("CONTEXT_SUMMARY: " + summary))).build());
             }
-        } catch (Exception e) {
-            log.warn("Compression sequence failed: {}", e.getMessage());
-        }
+        } catch (Exception ignored) {}
     }
 
-    private BaseAgent setupAgents(BaseLlm model) {
-        LlmAgent codeAgent = LlmAgent.builder()
-                .name("CodeAgent")
-                .model(model)
-                .instruction("You are an expert Code Assistant. Use your tools to verify logic and search for documentation.")
-                .tools(ImmutableList.of(new BuiltInCodeExecutionTool(), new GoogleSearchTool()))
+    private BaseAgent setupAgents(BaseLlm model, String apiKey) {
+        // Atomic Experts (Tools separated to avoid conflicts)
+        LlmAgent searchExpert = LlmAgent.builder()
+                .name("SearchExpert").model(model)
+                .instruction("Use Google Search for real-time web info.")
+                .tools(ImmutableList.of(new GoogleSearchTool()))
+                .build();
+
+        LlmAgent codeExecutor = LlmAgent.builder()
+                .name("CodeExecutionExpert").model(model)
+                .instruction("Use Code Execution to run and verify Python.")
+                .tools(ImmutableList.of(new BuiltInCodeExecutionTool()))
+                .build();
+
+        // RAG Expert (Agentic RAG)
+        // We create an anonymous provider class for the tool
+        Object ragToolProvider = new Object() {
+            @Schema(description = "Searches the internal organizational knowledge base for documentation.")
+            public String search_org_docs(
+                @Schema(name = "query", description = "The search query string") String query) {
+                return chromaService.searchDocs(query, apiKey);
+            }
+        };
+
+        LlmAgent ragExpert = LlmAgent.builder()
+                .name("OrgKnowledgeExpert").model(model)
+                .instruction("You have access to internal docs. Use 'search_org_docs' to find answers.")
+                .tools(ImmutableList.of(FunctionTool.create(ragToolProvider, "search_org_docs")))
+                .build();
+
+        // Compound Managers
+        LlmAgent codeAssistant = LlmAgent.builder()
+                .name("CodeAssistant").model(model)
+                .instruction("Code Expert. Delegate to SearchExpert or CodeExecutionExpert.")
+                .subAgents(searchExpert, codeExecutor)
                 .build();
 
         LlmAgent orgAssistant = LlmAgent.builder()
-                .name("OrgAssistant")
-                .model(model)
-                .instruction("Internal Org Assistant. Answer ONLY using provided docs. If missing, say 'I don't have details on this can you check with mentors.'")
+                .name("OrgAssistant").model(model)
+                .instruction("Internal Org Assistant. Delegate to OrgKnowledgeExpert for document searches.")
+                .subAgents(ragExpert)
                 .build();
 
         return LlmAgent.builder()
-                .name("Orchestrator")
-                .model(model)
-                .instruction("Analyze [SESSION_MODE].\n" +
-                             "1. CODE: Route to CodeAgent.\n" +
-                             "2. ORG: If organizational query, route to OrgAssistant. Else, respond that you are an org agent.")
-                .subAgents(codeAgent, orgAssistant)
+                .name("Orchestrator").model(model)
+                .instruction("Analyze [SESSION_MODE]. Route to CodeAssistant or OrgAssistant.")
+                .subAgents(codeAssistant, orgAssistant)
                 .build();
     }
 }

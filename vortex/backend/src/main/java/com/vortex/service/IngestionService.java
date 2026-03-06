@@ -19,31 +19,39 @@ public class IngestionService {
     private final Tika tika = new Tika();
 
     public void ingestDocument(MultipartFile file, String apiKey, int chunkSize, int chunkOverlap) throws Exception {
-        log.info("Starting admin ingestion for file: {} (Size: {}, Overlap: {})", 
-                file.getOriginalFilename(), chunkSize, chunkOverlap);
+        String filename = file.getOriginalFilename();
+        log.info("Starting intelligent ingestion for file: {}", filename);
 
         // 1. Extract Text
         String content = tika.parseToString(file.getInputStream());
-        
-        // 2. Advanced Chunking with Overlap
+        if (content == null || content.trim().isEmpty()) return;
+
+        // 2. Determine Semantic Topic (AI-powered metadata)
+        String sample = content.substring(0, Math.min(content.length(), 2000));
+        String topic = liteLlmService.getCompletion(
+                "Describe this document in 5 words or less: " + sample, apiKey).block();
+        log.info("Semantic Topic Identified: {}", topic);
+
+        // 3. De-duplicate: Clean existing records for this file
+        chromaService.deleteByFilename(filename);
+
+        // 4. Advanced Chunking
         List<String> chunks = splitIntoChunks(content, chunkSize, chunkOverlap);
 
-        // 3. Embed and Store with Metadata
-        for (String chunk : chunks) {
-            // block() is used here for simplicity in this prototype orchestrator
+        // 5. Embed and Store with Topic Metadata
+        for (int i = 0; i < chunks.size(); i++) {
+            String chunk = chunks.get(i);
             List<Double> embedding = liteLlmService.getEmbedding(chunk, apiKey).block();
             if (embedding != null) {
-                chromaService.upsert(chunk, embedding, file.getOriginalFilename());
+                chromaService.upsert(chunk, embedding, filename, i, topic);
             }
         }
         
-        log.info("Successfully indexed {} chunks for: {}", chunks.size(), file.getOriginalFilename());
+        log.info("Successfully indexed {} chunks for: {} (Topic: {})", chunks.size(), filename, topic);
     }
 
     private List<String> splitIntoChunks(String text, int size, int overlap) {
         List<String> chunks = new ArrayList<>();
-        if (text == null || text.isEmpty()) return chunks;
-        
         int start = 0;
         while (start < text.length()) {
             int end = Math.min(start + size, text.length());

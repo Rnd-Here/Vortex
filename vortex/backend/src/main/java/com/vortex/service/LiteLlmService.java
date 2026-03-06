@@ -52,13 +52,33 @@ public class LiteLlmService {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                 .bodyValue(Map.of(
                     "input", text,
-                    "model", "text-embedding-3-small" // Standard embedding model
+                    "model", "text-embedding-3-small"
                 ))
                 .retrieve()
                 .bodyToMono(Map.class)
                 .map(response -> {
                     List<Map<String, Object>> data = (List<Map<String, Object>>) response.get("data");
                     return (List<Double>) data.get(0).get("embedding");
+                });
+    }
+
+    /**
+     * Calls the LiteLLM Proxy for a chat completion (used for metadata enrichment).
+     */
+    public Mono<String> getCompletion(String prompt, String apiKey) {
+        return webClient.post()
+                .uri(baseUrl + "/v1/chat/completions")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
+                .bodyValue(Map.of(
+                    "model", "gemini-1.5-flash",
+                    "messages", List.of(Map.of("role", "user", "content", prompt))
+                ))
+                .retrieve()
+                .bodyToMono(Map.class)
+                .map(response -> {
+                    List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
+                    Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
+                    return (String) message.get("content");
                 });
     }
 }
