@@ -276,7 +276,14 @@ function ChatPlatform() {
         setSessions(prev => [newSession, ...prev]);
       }
 
-      const assistantMsg = await api.sendMessage(currentSession.id!, promptToSend, currentSession.mode, fileToSend);
+      // MULTIMODAL CALL
+      const assistantMsg = await api.sendMessage(
+        currentSession.id!, 
+        promptToSend, 
+        currentSession.mode, 
+        fileToSend,
+        currentSession.model
+      );
       setMessages(prev => [...prev, assistantMsg]);
     } catch (err) {
       alert('Vortex connection failed. Ensure proxy is reachable.');
@@ -294,22 +301,48 @@ function ChatPlatform() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+        ? 'audio/webm' 
+        : 'audio/mp4';
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
-      mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) audioChunksRef.current.push(event.data); };
+      
+      mediaRecorder.ondataavailable = (event) => { 
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data); 
+        }
+      };
+
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (audioChunksRef.current.length === 0) {
+          setIsTranscribing(false);
+          return;
+        }
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
         setIsTranscribing(true);
         try {
           const result = await api.transcribe(audioBlob);
-          setInputText(prev => (prev ? `${prev} ${result.text}` : result.text));
-        } catch (err) { alert('Transcription failed.'); } finally { setIsTranscribing(false); }
+          if (result && result.text) {
+            setInputText(prev => (prev ? `${prev} ${result.text}` : result.text));
+          }
+        } catch (err) { 
+          console.error('Transcription error:', err);
+          alert('Transcription failed. Ensure backend is reachable.'); 
+        } finally { 
+          setIsTranscribing(false); 
+        }
         stream.getTracks().forEach(track => track.stop());
       };
-      mediaRecorder.start();
+
+      mediaRecorder.start(1000);
       setIsRecording(true);
-    } catch (err) { alert('Mic access denied.'); }
+    } catch (err) { 
+      console.error('Mic error:', err);
+      alert('Mic access denied or not available.'); 
+    }
   };
 
   const stopRecording = () => { if (mediaRecorderRef.current && isRecording) { mediaRecorderRef.current.stop(); setIsRecording(false); } };
@@ -458,7 +491,7 @@ function ChatPlatform() {
               </div>
             </div>
 
-            <input type="password" value={newApiKey} onChange={e => setNewApiKey(e.target.value)} className="w-full px-5 py-4 bg-[#0a0a0f] border border-[#1f1f2e] rounded-2xl focus:border-[#00f2ff] outline-none transition-all placeholder-[#4a4a6a] text-sm mb-8" placeholder="Enter API Key" />
+            <input type="password" value={newApiKey} onChange={e => setNewApiKey(e.target.value)} className="w-full px-5 py-4 bg-[#0a0a0f] border border-[#1f1f2e] rounded-2xl focus:border-[#00f2ff] outline-none transition-all placeholder-[#4a4a6a] text-sm mb-8" placeholder={MOCK_CONFIG.enabled ? "MOCK MODE ACTIVE (ENTER ANYTHING)" : "Enter API Key (sk-... or AI...)"} />
             <button onClick={handleInitialSetup} disabled={isUpdatingKey || (!MOCK_CONFIG.enabled && !newApiKey.startsWith('sk-') && !newApiKey.startsWith('AI'))} className={`w-full py-4 rounded-2xl font-bold transition-all shadow-xl flex items-center justify-center gap-2 tracking-widest uppercase text-xs ${isDirectMode ? 'bg-[#7000ff] text-white' : 'bg-[#00f2ff] text-[#0a0a0f]'}`}>{isUpdatingKey ? <Loader2 className="animate-spin" /> : 'Establish Link'}</button>
           </div>
         </div>

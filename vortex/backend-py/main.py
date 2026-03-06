@@ -189,6 +189,13 @@ async def delete_session(session_id: str):
     finally:
         db.close()
 
+@app.post("/api/v1/transcribe")
+async def transcribe(file: UploadFile = File(...)):
+    # Simple transcription placeholder or actual Whisper call via LiteLLM
+    # Note: Requires an API key if calling a real model. 
+    # For now, we'll return a placeholder to match the Java side.
+    return {"text": "Audio received and processed."}
+
 # --- Technical Demonstration Endpoints (Updated for Nested Agents) ---
 
 @app.post("/api/v1/test/simple-agent")

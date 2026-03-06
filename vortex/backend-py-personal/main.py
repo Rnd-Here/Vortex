@@ -36,6 +36,10 @@ async def create_session(request: Dict = Body(...)):
         "created_at": "now"
     }
 
+@app.post("/api/v1/transcribe")
+async def transcribe(file: UploadFile = File(...)):
+    return {"text": "Personal audio processed."}
+
 @app.post("/api/v1/chat")
 async def chat(
     session_id: str = Form(...),

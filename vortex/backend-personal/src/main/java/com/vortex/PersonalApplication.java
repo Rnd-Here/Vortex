@@ -1,4 +1,4 @@
-package com.vortex;
+package main.java.com.vortex;
 
 import com.google.adk.agents.LlmAgent;
 import com.google.adk.agents.RunConfig;
@@ -32,7 +32,7 @@ public class PersonalApplication {
     }
 
     @PostMapping("/models")
-    public Map<String, List<String>> fetchModels() {
+    public Map<String, List<String>> fetchModels(@RequestBody Map<String, Object> body) {
         return Map.of("models", List.of("gemini-2.0-flash", "gemini-1.5-pro"));
     }
 
@@ -44,6 +44,11 @@ public class PersonalApplication {
             "model", request.getOrDefault("model", "gemini-2.0-flash"),
             "mode", "code"
         );
+    }
+
+    @PostMapping("/transcribe")
+    public Map<String, String> transcribe() {
+        return Map.of("text", "Personal audio processed.");
     }
 
     @PostMapping("/chat")

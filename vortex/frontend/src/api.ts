@@ -101,7 +101,7 @@ export const api = {
     }
   },
   
-  sendMessage: async (sessionId: string, content: string, mode: string = "code", file: File | null = null) => {
+  sendMessage: async (sessionId: string, content: string, mode: string = "code", file: File | null = null, model: string = "") => {
     if (sessionId.startsWith('mock-')) {
       await sleep(MOCK_CONFIG.delay + 500);
       const responses = mode === 'code' ? MOCK_CONFIG.responses.code : MOCK_CONFIG.responses.org;
@@ -115,6 +115,8 @@ export const api = {
     const formData = new FormData();
     formData.append('session_id', sessionId);
     formData.append('content', content);
+    formData.append('model', model);
+    formData.append('model_name', model); // For Python compatibility
     formData.append('api_key', localStorage.getItem('VORTEX_API_KEY') || '');
     if (file) formData.append('file', file);
 
@@ -143,6 +145,20 @@ export const api = {
     formData.append('chunk_size', chunkSize.toString());
     formData.append('chunk_overlap', chunkOverlap.toString());
     const res = await axios.post(`${currentBaseUrl}/admin/ingest`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return res.data;
+  },
+
+  transcribe: async (audioBlob: Blob) => {
+    if (MOCK_CONFIG.enabled) {
+      await sleep(1500);
+      return { text: "Simulated transcription." };
+    }
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'recording.webm');
+    
+    const res = await axios.post(`${currentBaseUrl}/transcribe`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
     return res.data;
   },
 

@@ -15,7 +15,7 @@ public class FileService {
         log.info("Processing transcription for: {}", file.getOriginalFilename());
         // Placeholder for LiteLLM Whisper API integration
         return TranscribeResponse.builder()
-                .text("")
+                .text("Vortex Enterprise audio processed.")
                 .build();
     }
 
