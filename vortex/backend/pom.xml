@@ -91,6 +91,11 @@
 			<artifactId>google-adk</artifactId>
 			<version>${adk.version}</version>
 		</dependency>
+		<dependency>
+			<groupId>dev.langchain4j</groupId>
+			<artifactId>langchain4j-open-ai</artifactId>
+			<version>0.33.0</version>
+		</dependency>
         <dependency>
             <groupId>commons-codec</groupId>
             <artifactId>commons-codec</artifactId>

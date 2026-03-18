@@ -1,0 +1,73 @@
+{
+  "name": "vortex-ai",
+  "displayName": "Vortex AI",
+  "description": "Vortex AI: Real-time code analysis and multi-agent assistant.",
+  "version": "0.0.1",
+  "publisher": "vortex-engineering",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "AI",
+    "Machine Learning"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vortex-explorer",
+          "title": "Vortex AI",
+          "icon": "$(sparkle)"
+        }
+      ]
+    },
+    "views": {
+      "vortex-explorer": [
+        {
+          "type": "webview",
+          "id": "vortex.sidebar",
+          "name": "Vortex Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "vortex.login",
+        "title": "Vortex: Login to LiteLLM Proxy"
+      },
+      {
+        "command": "vortex.generateFile",
+        "title": "Vortex: Generate File from AI"
+      }
+    ],
+    "configuration": {
+      "title": "Vortex AI",
+      "properties": {
+        "vortex.apiUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "VORTEX Backend URL"
+        },
+        "vortex.username": {
+          "type": "string",
+          "description": "Organization Username"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "18.x",
+    "typescript": "^5.1.3"
+  }
+}

@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 google-adk>=0.7.0
+google-genai
 litellm
 sqlalchemy
 python-multipart

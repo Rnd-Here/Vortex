@@ -9,11 +9,11 @@ import com.google.adk.events.Event;
 import com.google.adk.tools.BuiltInCodeExecutionTool;
 import com.google.adk.tools.GoogleSearchTool;
 import com.google.adk.tools.FunctionTool;
-import com.google.adk.tools.Annotations.Schema;
+import com.google.adk.tools.AgentTool;
+import com.google.adk.tools.annotations.Schema;
 import com.google.adk.models.BaseLlm;
-import com.google.adk.models.ApigeeLlm;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
+import com.google.adk.models.langchain4j.LangChain4j;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import com.google.genai.types.Content;
 import com.google.genai.types.Part;
 import lombok.RequiredArgsConstructor;
@@ -56,7 +56,7 @@ public class AgentService {
                     partsList.add(Part.builder().inlineData(com.google.genai.types.Blob.builder().mimeType(contentType).data(file.getBytes()).build()).build());
                 } else {
                     String extractedText = tika.parseToString(file.getInputStream());
-                    enhancedQuery = String.format("ATTACHED_FILE: %s\nCONTENT:\n%s\n\nUSER_QUERY: %s", 
+                    enhancedQuery = String.format("FILE: %s\nCONTENT:\n%s\n\nUSER: %s", 
                             file.getOriginalFilename(), extractedText, query);
                 }
             } catch (Exception e) {
@@ -64,20 +64,21 @@ public class AgentService {
             }
         }
 
-        BaseLlm configuredModel = ApigeeLlm.builder()
+        OpenAiChatModel openAiModel = OpenAiChatModel.builder()
+                .baseUrl(proxyBaseUrl + "/v1")
+                .apiKey(apiKey)
                 .modelName(modelName)
-                .proxyUrl(proxyBaseUrl)
-                .customHeaders(ImmutableMap.of("Authorization", "Bearer " + apiKey))
                 .build();
 
-        // Agentic RAG: We pass the apiKey to the setupAgents so the tool can use it
+        BaseLlm configuredModel = new LangChain4j(openAiModel);
+
         InMemoryRunner runner = runnerCache.computeIfAbsent(modelName, m -> new InMemoryRunner(setupAgents(configuredModel, apiKey)));
 
         compressHistoryIfNecessary(runner, sessionId, configuredModel);
 
         final StringBuilder responseBuilder = new StringBuilder();
         try {
-            String finalPrompt = String.format("[SESSION_MODE: %s] %s", mode.toUpperCase(), enhancedQuery);
+            String finalPrompt = String.format("[MODE: %s] %s", mode.toUpperCase(), enhancedQuery);
             partsList.add(Part.fromText(finalPrompt));
             Content multimodalContent = Content.fromParts(partsList.toArray(new Part[0]));
 
@@ -107,58 +108,56 @@ public class AgentService {
                     if (event.finalResponse()) summary.append(event.stringifyContent());
                 });
                 session.events().clear();
-                session.events().add(Event.builder().id(Event.generateEventId()).author("System").content(Content.fromParts(Part.fromText("CONTEXT_SUMMARY: " + summary))).build());
+                session.events().add(Event.builder().id(Event.generateEventId()).author("System").content(Content.fromParts(Part.fromText("SUMMARY: " + summary))).build());
             }
         } catch (Exception ignored) {}
     }
 
     private BaseAgent setupAgents(BaseLlm model, String apiKey) {
-        // Atomic Experts (Tools separated to avoid conflicts)
+        // 1. specialized atomic experts
         LlmAgent searchExpert = LlmAgent.builder()
                 .name("SearchExpert").model(model)
-                .instruction("Use Google Search for real-time web info.")
+                .description("Searches for real-time information on the web.")
                 .tools(ImmutableList.of(new GoogleSearchTool()))
                 .build();
 
         LlmAgent codeExecutor = LlmAgent.builder()
                 .name("CodeExecutionExpert").model(model)
-                .instruction("Use Code Execution to run and verify Python.")
+                .description("Executes Python code to solve math or logic problems.")
                 .tools(ImmutableList.of(new BuiltInCodeExecutionTool()))
                 .build();
 
-        // RAG Expert (Agentic RAG)
-        // We create an anonymous provider class for the tool
         Object ragToolProvider = new Object() {
-            @Schema(description = "Searches the internal organizational knowledge base for documentation.")
-            public String search_org_docs(
-                @Schema(name = "query", description = "The search query string") String query) {
+            @Schema(description = "Searches internal docs.")
+            public String search_org_docs(@Schema(name = "query") String query) {
                 return chromaService.searchDocs(query, apiKey);
             }
         };
 
         LlmAgent ragExpert = LlmAgent.builder()
                 .name("OrgKnowledgeExpert").model(model)
-                .instruction("You have access to internal docs. Use 'search_org_docs' to find answers.")
+                .description("Accesses internal organizational documents and policies.")
                 .tools(ImmutableList.of(FunctionTool.create(ragToolProvider, "search_org_docs")))
                 .build();
 
-        // Compound Managers
+        // 2. Managers (wrapping agents as tools)
         LlmAgent codeAssistant = LlmAgent.builder()
                 .name("CodeAssistant").model(model)
-                .instruction("Code Expert. Delegate to SearchExpert or CodeExecutionExpert.")
-                .subAgents(searchExpert, codeExecutor)
+                .instruction("You are a Code Expert. Delegate to specialized tools.")
+                .tools(ImmutableList.of(AgentTool.create(searchExpert), AgentTool.create(codeExecutor)))
                 .build();
 
         LlmAgent orgAssistant = LlmAgent.builder()
                 .name("OrgAssistant").model(model)
-                .instruction("Internal Org Assistant. Delegate to OrgKnowledgeExpert for document searches.")
-                .subAgents(ragExpert)
+                .instruction("Org Assistant. Answer ONLY using provided docs.")
+                .tools(ImmutableList.of(AgentTool.create(ragExpert)))
                 .build();
 
+        // 3. Root Orchestrator
         return LlmAgent.builder()
                 .name("Orchestrator").model(model)
-                .instruction("Analyze [SESSION_MODE]. Route to CodeAssistant or OrgAssistant.")
-                .subAgents(codeAssistant, orgAssistant)
+                .instruction("Analyze [MODE]. Delegate to CodeAssistant or OrgAssistant. Reject non-org queries in ORG mode.")
+                .tools(ImmutableList.of(AgentTool.create(codeAssistant), AgentTool.create(orgAssistant)))
                 .build();
     }
 }
