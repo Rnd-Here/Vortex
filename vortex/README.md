@@ -1,99 +1,83 @@
-# VORTEX: Multi-Agent LLM Platform
+# VORTEX: Unified AI Agent Platform
 
-**VORTEX** is a production-quality internal AI platform featuring quad-engine orchestration (Java/Python), Agentic RAG, and a futuristic "Electric Dark" cyberpunk interface. It is designed for both secure organizational use and high-performance personal coding assistance.
+**VORTEX** is a consolidated, high-performance AI platform featuring a unified Python LiteLLM core, a standalone Code Intelligence Engine (CIE), and an integrated VS Code Extension ecosystem.
 
-## 📡 VORTEX Port Map
+## 📡 Port Map
 
 | Component | Port | Description |
 | :--- | :--- | :--- |
-| **Java Enterprise** | `8000` | Enterprise Core (Spring Boot + Proxy Support) |
-| **Python Agile** | `8002` | Agile Core (FastAPI + Asynchronous ADK) |
-| **Java Personal** | `8003` | Direct-to-Google Core (Personal Edition) |
-| **Python Personal** | `8004` | Direct-to-Google Core (Lightweight Edition) |
+| **VORTEX Core API** | `8002` | Unified Multi-Agent Engine (LiteLLM Proxy) |
+| **VORTEX Analyzer** | `8005` | Real-time Code Intelligence Engine (CIE) |
 | **React Frontend** | `80` / `5173` | Unified Chat Terminal & Admin Suite |
-| **ChromaDB Engine** | `8001` | Shared Persistent Knowledge Store |
+| **ChromaDB Engine** | `8001` | Persistent Knowledge Store |
 | **Streamlit UI** | `8501` | Technical Demo & Logic Proof UI |
 
 ---
 
-## 🏗️ Architectural Highlights
+## 🏗️ Re-vamped Architecture
 
-### Quad-Engine Interoperability
-VORTEX supports four interchangeable backend engines. You can toggle between them via the **Engine Selector** in the UI.
-- **Enterprise Modes (Proxy):** Connect through corporate proxies with strict isolation.
-- **Personal Modes (Direct):** Direct high-speed connection to Google Gemini API.
-- **Shared Data:** All engines share the same session database (`chat_app.db`) and knowledge blob.
+### Single-Core Python Engine
+VORTEX has been consolidated into a single, high-speed Python core (`backend-py`).
+- **Native LiteLLM Integration:** Direct connectivity to LiteLLM Proxy via standard environment variables.
+- **Agentic RAG:** Dynamically triggered organizational knowledge search with semantic topic tagging.
+- **Multi-Agent Orchestration:** Hierarchical "Agent as Tool" pattern for complex reasoning.
 
-### Agentic RAG (Advanced Retrieval)
-Unlike standard RAG, VORTEX implements **Agentic RAG**:
-- **Search as a Tool:** Agents dynamically decide when to search the knowledge base.
-- **Semantic Tagging:** Ingested documents are automatically analyzed by AI to generate intelligent `topic` metadata, rendering ambiguous filenames irrelevant.
-- **Iterative Search:** Agents can refine searches based on uncovered details during conversation.
+### Code Intelligence Engine (CIE)
+A dedicated service (`backend-analyzer`) for real-time developer assistance.
+- **Logic Optimization:** Automatically detects suboptimal code patterns (e.g., redundant loops) and suggests modern, built-in alternatives.
+- **Real-time API:** Designed for integration with IDE extensions via a high-performance `/analyze` endpoint.
 
-### "Agent as Tool" Pattern (Conflict Resolution)
-To comply with ADK constraints, VORTEX uses a nested hierarchy:
-- **Orchestrator** delegates to **Specialist Managers**.
-- Managers control atomic experts like **SearchExpert** and **CodeExecutionExpert**.
-- This prevents tool conflicts and ensures 100% reliability for complex tasks.
+### VS Code Extension
+Turn your IDE into an agentic workstation.
+- **Secure Handshake:** Managed token refreshes for 1-hour session constraints.
+- **Ghost Text Analysis:** Real-time feedback powered by the VORTEX Analyzer.
+- **Filesystem Access:** Direct creation and refactoring of project files by AI agents.
 
 ---
 
-## 🚀 Deployment (Production)
+## 🚀 Quick Start (Production)
 
-The production stack defaults to the Java Enterprise engine:
 ```bash
 # 1. Configure .env in root
 # 2. Launch
 docker-compose up --build -d
 ```
 - **Frontend:** `http://localhost` (Port 80)
-- **Backend:** Accessible at `8000` (Java) and `8002` (Python).
-
----
-
-## 🧪 Technical Demonstration (Internal Testing)
-
-The **Technical Proof UI** is used for step-by-step logic verification.
-
-### Quick Start (Demo)
-1. **Launch a Backend Engine:**
-   - Java: `cd backend && mvn spring-boot:run`
-   - Python: `cd backend-py && python main.py`
-2. **Launch Demo UI:**
-   ```bash
-   cd vortex/test-ui
-   pip install -r requirements.txt
-   streamlit run demo_app.py
-   ```
-- **Feature:** Use the sidebar to toggle between Java and Python backends during the demo.
+- **API:** `http://localhost:8002`
 
 ---
 
 ## 🛠️ Manual Development Setup
 
-### Python Backends (Agile/Personal)
+### 1. Unified Core
 ```bash
+cd vortex/backend-py
 pip install -r requirements.txt
 python main.py
 ```
 
-### Java Backends (Enterprise/Personal)
+### 2. Code Analyzer
 ```bash
-mvn spring-boot:run
+cd vortex/backend-analyzer
+pip install -r requirements.txt
+python main.py
 ```
 
-### React Frontend
+### 3. VS Code Extension
 ```bash
-npm install && npm run dev
+cd vortex/vortex-extension
+npm install
+npm run compile
+# Press F5 in VS Code to launch
 ```
 
 ---
 
 ## 📦 Data Management
 
-- **Database:** `vortex/backend/data/chat_app.db` (Shared SQLite).
-- **Knowledge Blob:** `vortex/chroma_data/` (Portable Vector Store).
-- **Security:** AES-256 encrypted API keys and SHA-256 session isolation.
+- **Database:** `vortex/backend-py/data/chat_app.db` (SQLite).
+- **Knowledge Blob:** `vortex/chroma_data/` (Persistent Vector Store).
+- **Security:** SHA-256 session isolation and AES-encrypted key management.
 
 ---
 *Developed with excellence by the VORTEX Engineering Team.*

@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-google-adk>=0.7.0
-python-multipart
-requests
-pydantic
-python-dotenv

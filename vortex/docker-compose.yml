@@ -1,30 +1,15 @@
 version: '3.8'
 
 services:
-  vortex-backend:
-    build: ./backend
-    container_name: vortex-backend
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./backend/data:/app/data
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:sqlite:/app/data/chat_app.db
-      - LITELLM_PROXY_BASE_URL=${LITELLM_PROXY_BASE_URL}
-      - SECRET_KEY=${SECRET_KEY}
-      - CHROMA_URL=http://chromadb:8000
-      - CHROMA_COLLECTION_NAME=${CHROMA_COLLECTION_NAME:-org_knowledge}
-    restart: unless-stopped
-
-  vortex-backend-py:
+  vortex-api:
     build: ./backend-py
-    container_name: vortex-backend-py
+    container_name: vortex-api
     ports:
       - "8002:8002"
     volumes:
-      - ./backend/data:/app/data
+      - ./backend_data:/app/data
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:sqlite:/app/data/chat_app.db
+      - SPRING_DATASOURCE_URL=sqlite:///app/data/chat_app.db
       - LITELLM_PROXY_BASE_URL=${LITELLM_PROXY_BASE_URL}
       - SECRET_KEY=${SECRET_KEY}
       - CHROMA_URL=http://chromadb:8000
@@ -37,10 +22,9 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - vortex-backend
+      - vortex-api
     restart: unless-stopped
 
-  # Optional local ChromaDB instance if not using external
   chromadb:
     image: chromadb/chroma:latest
     container_name: vortex-chroma

@@ -13,9 +13,6 @@ class Session(Base):
     api_key_hash = Column(String, nullable=False)
     name = Column(String)
     model = Column(String)
-    previous_models = Column(Text) # Comma-separated history
-    mode = Column(String)
-    is_mock = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     messages = relationship("Message", back_populates="session", cascade="all, delete-orphan")

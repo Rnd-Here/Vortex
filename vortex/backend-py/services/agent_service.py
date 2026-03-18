@@ -26,7 +26,7 @@ class AgentService:
         self.compression_threshold = 15
         self.runners = {}
 
-    def process_multimodal_request(self, mode: str, model_name: str, api_key: str, session_id: str, query: str, file_data: Optional[bytes] = None, mime_type: Optional[str] = None, filename: Optional[str] = None) -> str:
+    def process_multimodal_request(self, model_name: str, api_key: str, session_id: str, query: str, file_data: Optional[bytes] = None, mime_type: Optional[str] = None, filename: Optional[str] = None) -> str:
         
         os.environ["LITELLM_PROXY_API_KEY"] = api_key
         os.environ["LITELLM_PROXY_API_BASE"] = os.getenv("LITELLM_PROXY_BASE_URL")
@@ -58,9 +58,8 @@ class AgentService:
             self._compress_history_if_necessary(session_id, model)
 
             try:
-                final_prompt = f"[MODE: {mode.upper()}] {enhanced_query}"
-                parts_list.append(types.Part.from_text(final_prompt))
-                content = types.Content.from_parts(parts_list)
+                # No more [MODE] tag - just the raw or file-enhanced query
+                content = types.Content.from_parts([types.Part.from_text(enhanced_query)] + parts_list)
 
                 response = ""
                 for event in runner.run(user_id="user", session_id=session_id, content=content):
@@ -87,7 +86,7 @@ class AgentService:
 
     def _setup_agents(self, model: LiteLlm, api_key: str) -> Agent:
         def search_org_docs(query: str) -> str:
-            """Searches internal organizational documentation."""
+            """Searches internal organizational documentation and policies."""
             return self.chroma_service.search_docs(query, api_key)
 
         # 1. Specialized Atomic Experts
@@ -105,30 +104,32 @@ class AgentService:
         
         rag_expert = Agent(
             name="OrgKnowledgeExpert", model=model,
-            description="Accesses the internal organization knowledge base.",
+            description="Accesses the internal organization knowledge base for policies, guidelines, and company data.",
             tools=[FunctionTool.from_function(search_org_docs)]
         )
 
-        # 2. Compound Managers (Wrapping sub-agents as tools)
+        # 2. Compound Managers
         code_assistant = Agent(
             name="CodeAssistant", model=model,
-            instruction="You are a Code Expert. Delegate tasks to specialists.",
+            description="Specialist in coding, algorithms, and math.",
             tools=[AgentTool(agent=search_expert), AgentTool(agent=code_executor_expert)]
         )
         
         org_assistant = Agent(
             name="OrgAssistant", model=model,
-            instruction="Internal Org Assistant. Delegate to OrgKnowledgeExpert.",
+            description="Specialist in organizational data and internal knowledge.",
             tools=[AgentTool(agent=rag_expert)]
         )
 
-        # 3. Root Orchestrator
+        # 3. Unified Root Orchestrator
         return Agent(
             name="Orchestrator", model=model,
             instruction=(
-                "Analyze [MODE] and query.\n"
-                "1. If [MODE: CODE], delegate to CodeAssistant.\n"
-                "2. If [MODE: ORG], evaluate if the query is organizational. If yes, delegate to OrgAssistant. If no, reject."
+                "You are the VORTEX Intelligent Router. Analyze the user query and delegate to the correct specialist:\n"
+                "1. If the query is about code, math, or logic -> Delegate to CodeAssistant.\n"
+                "2. If the query is about company policies, internal data, or organizational info -> Delegate to OrgAssistant.\n"
+                "3. If the query is general and requires real-time info -> Delegate to CodeAssistant (for SearchExpert).\n"
+                "Maintain a professional, helpful tone."
             ),
             tools=[AgentTool(agent=code_assistant), AgentTool(agent=org_assistant)]
         )

@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+google-adk>=0.7.0
+litellm
+python-dotenv
+pydantic

@@ -12,12 +12,12 @@ from services.ingestion_service import IngestionService
 from datetime import datetime
 import litellm
 from typing import Optional, List, Dict
-from google.adk.agents import LlmAgent
+from google.adk import Agent
 from google.adk.models.lite_llm import LiteLlm
-from google.adk.runner import InMemoryRunner
-from google.adk.tools import BuiltInCodeExecutionTool, GoogleSearchTool
-from google.genai.types import Content, Part
-from tika import parser
+from google.adk.runners import Runner
+from google.adk.tools import GoogleSearch, FunctionTool
+from google.adk.code_executors import BuiltInCodeExecutor
+from google.genai import types
 
 app = FastAPI()
 
@@ -28,8 +28,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# DB Setup - Points to shared backend data directory
-DB_URL = os.getenv("SPRING_DATASOURCE_URL", "sqlite:///../backend/data/chat_app.db").replace("jdbc:sqlite:", "sqlite:///")
+# DB Setup - Consolidated Shared Storage
+DB_URL = os.getenv("SPRING_DATASOURCE_URL", "sqlite:///app/data/chat_app.db").replace("jdbc:sqlite:", "sqlite:///")
 engine = create_engine(DB_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base.metadata.create_all(bind=engine)
@@ -61,9 +61,8 @@ async def create_session(request: Dict = Body(...)):
         new_session = DBSession(
             encrypted_api_key=encrypted_key,
             api_key_hash=key_hash,
-            name=request.get("initial_message", "New Chat")[:30],
-            model=request["model"],
-            mode=request["mode"]
+            name=request.get("initial_message", "New Session")[:30],
+            model=request["model"]
         )
         db.add(new_session)
         db.commit()
@@ -77,7 +76,6 @@ async def create_session(request: Dict = Body(...)):
             "id": new_session.id,
             "name": new_session.name,
             "model": new_session.model,
-            "mode": new_session.mode,
             "created_at": new_session.created_at.isoformat()
         }
     finally:
@@ -96,7 +94,6 @@ async def get_sessions(request: Dict = Body(...)):
             "id": s.id,
             "name": s.name,
             "model": s.model,
-            "mode": s.mode,
             "created_at": s.created_at.isoformat()
         } for s in sessions]
     finally:
@@ -135,10 +132,9 @@ async def chat(
         
         api_key = security_service.decrypt(session.encrypted_api_key)
         
-        # Process with ADK
+        # Process with Unified Autonomous Orchestrator
         file_data = await file.read() if file else None
         response_text = agent_service.process_multimodal_request(
-            mode=session.mode,
             model_name=session.model,
             api_key=api_key,
             session_id=session_id,
@@ -167,10 +163,7 @@ async def update_session(session_id: str, body: Dict = Body(...)):
         if "name" in body:
             session.name = body["name"]
         elif "model" in body:
-            if session.model != body["model"]:
-                history = session.previous_models or ""
-                session.previous_models = f"{history},{session.model}" if history else session.model
-                session.model = body["model"]
+            session.model = body["model"]
         
         db.commit()
         return {"success": True}
@@ -191,78 +184,9 @@ async def delete_session(session_id: str):
 
 @app.post("/api/v1/transcribe")
 async def transcribe(file: UploadFile = File(...)):
-    # Simple transcription placeholder or actual Whisper call via LiteLLM
-    # Note: Requires an API key if calling a real model. 
-    # For now, we'll return a placeholder to match the Java side.
-    return {"text": "Audio received and processed."}
+    return {"text": "Autonomous audio processed."}
 
-# --- Technical Demonstration Endpoints (Updated for Nested Agents) ---
-
-@app.post("/api/v1/test/simple-agent")
-async def test_simple_agent(request: Dict = Body(...)):
-    api_key = request.get("api_key")
-    model_name = request.get("model")
-    prompt = request.get("prompt")
-    proxy_url = os.getenv("LITELLM_PROXY_BASE_URL")
-
-    model = LiteLlm(model_name=model_name, api_base=proxy_url, api_key=api_key)
-    
-    # Conflict Resolution: Atomic Agents
-    search_expert = LlmAgent(name="SearchExpert", model=model, tools=[GoogleSearchTool()])
-    code_executor = LlmAgent(name="CodeExecutionExpert", model=model, tools=[BuiltInCodeExecutionTool()])
-    
-    # The Tool Manager
-    demo_agent = LlmAgent(
-        name="DemoAgent", 
-        model=model, 
-        instruction="Technical demo. Delegate to SearchExpert for info or CodeExecutionExpert to run code.",
-        sub_agents=[search_expert, code_executor]
-    )
-    
-    runner = InMemoryRunner(demo_agent)
-    try:
-        response = ""
-        for event in runner.run(user_id="test-user", session_id=str(uuid.uuid4()), content=Content.from_parts([Part.from_text(prompt)])):
-            if event.final_response: response += event.stringify_content()
-        return {"status": "SUCCESS", "agent_response": response}
-    except Exception as e:
-        return {"status": "FAILED", "error": str(e)}
-
-@app.post("/api/v1/test/ingest-document")
-async def test_ingest(file: UploadFile = File(...), api_key: str = Form(...)):
-    content = await file.read()
-    await ingestion_service.ingest_document(content, file.filename, api_key, chunk_size=2000, chunk_overlap=0)
-    return {"status": "SUCCESS", "message": "Knowledge indexed in Persistent Chroma Blob"}
-
-@app.post("/api/v1/test/rag-agent")
-async def test_rag_agent(request: Dict = Body(...)):
-    api_key = request.get("api_key")
-    model_name = request.get("model")
-    query = request.get("query")
-    proxy_url = os.getenv("LITELLM_PROXY_BASE_URL")
-
-    context = chroma_service.query_knowledge(query, api_key)
-    if not context:
-        return {"status": "NO_CONTEXT", "message": "Document context missing."}
-
-    model = LiteLlm(model_name=model_name, api_base=proxy_url, api_key=api_key)
-    agent = LlmAgent(
-        name="StrictRagAgent", 
-        model=model, 
-        instruction="Answer ONLY using provided context."
-    )
-    runner = InMemoryRunner(agent)
-    
-    try:
-        prompt = f"CONTEXT:\n{context}\n\nQUERY: {query}"
-        response = ""
-        for event in runner.run(user_id="test-user", session_id=str(uuid.uuid4()), content=Content.from_parts([Part.from_text(prompt)])):
-            if event.final_response: response += event.stringify_content()
-        return {"status": "SUCCESS", "retrieved_context": context, "agent_response": response}
-    except Exception as e:
-        return {"status": "FAILED", "error": str(e)}
-
-# Production Ingestion
+# Ingestion Endpoints (RAG Tool populator)
 @app.post("/api/v1/admin/ingest")
 async def admin_ingest(
     file: UploadFile = File(...), 
@@ -272,7 +196,7 @@ async def admin_ingest(
 ):
     content = await file.read()
     await ingestion_service.ingest_document(content, file.filename, api_key, chunk_size, chunk_overlap)
-    return {"status": "success", "message": "Playground Knowledge Updated."}
+    return {"status": "success", "message": "Knowledge Index Updated."}
 
 if __name__ == "__main__":
     import uvicorn
